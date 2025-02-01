@@ -15,7 +15,7 @@ func main() {
 	}
 
 	log.Print("Chat started")
-	broadcast := broadcast.NewBroadcast(room.NewRoom())
+	broadcast := broadcast.NewMainBroardcast(room.NewMainRooms())
 	go broadcast.Broadcast()
 
 	for {
@@ -24,6 +24,6 @@ func main() {
 			log.Print(err)
 			continue
 		}
-		go handler.HandleConn(conn, broadcast)
+		go handler.MainHandleConn(conn, broadcast)
 	}
 }
