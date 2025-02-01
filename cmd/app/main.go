@@ -5,7 +5,6 @@ import (
 	"net"
 	"tcp-chat/internal/broadcast"
 	"tcp-chat/internal/handler"
-	"tcp-chat/internal/room"
 )
 
 func main() {
@@ -15,7 +14,8 @@ func main() {
 	}
 
 	log.Print("Chat started")
-	broadcast := broadcast.NewMainBroardcast(room.NewMainRooms())
+
+	broadcast := broadcast.NewBroadcast()
 	go broadcast.Broadcast()
 
 	for {
@@ -24,6 +24,6 @@ func main() {
 			log.Print(err)
 			continue
 		}
-		go handler.MainHandleConn(conn, broadcast)
+		go handler.HandleConn(conn, broadcast)
 	}
 }

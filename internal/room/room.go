@@ -1,32 +1,29 @@
 package room
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"tcp-chat/internal/client"
 )
 
-type MainRoom struct {
-	Rooms   map[string]Room
-	Clients map[client.ClientConn]client.Client
-	Mu      *sync.RWMutex
-}
+const (
+	MainRoomName string = "main"
+)
 
 type Room struct {
-	Clients map[client.ClientConn]client.Client
-	Mu      *sync.RWMutex
+	Name     string
+	Clients  map[client.ClientConn]*client.Client
+	Mu       *sync.RWMutex
+	Commands []string
 }
 
-func NewMainRooms() *MainRoom {
-	return &MainRoom{
-		Rooms:   make(map[string]Room),
-		Clients: make(map[client.ClientConn]client.Client),
-		Mu:      new(sync.RWMutex),
+func GetUsersInRoom(r Room) string {
+	text := strings.Builder{}
+	text.WriteString("\tusers:\n")
+	for _, client := range r.Clients {
+		text.WriteString(fmt.Sprintf("\t %s\n", client.Name))
 	}
-}
 
-func NewRoom() Room {
-	return Room{
-		Clients: make(map[client.ClientConn]client.Client),
-		Mu:      new(sync.RWMutex),
-	}
+	return text.String()
 }
