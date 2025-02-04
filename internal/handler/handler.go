@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"tcp-chat/internal/broadcast"
 	"tcp-chat/internal/client"
@@ -42,11 +43,24 @@ func HandleConn(conn net.Conn, cast broadcast.Broadcast) {
 	}
 
 	// listen msg from user
-	var isCreating bool
+	isCreating := false
+	isEntering := false
 	for input.Scan() {
 		msg := input.Text()
 
+		if strings.Contains(msg, room.Help) {
+			ch <- room.GetCommandsDescription(cast.Room[client.CurrRoom].Commands)
+		}
+
 		if isCreating {
+			if msg == "" {
+				ch <- "Empty room name. Try again!"
+
+				isCreating = false
+
+				continue
+			}
+
 			cast.Creating <- broadcast.CreatingData{
 				Chan:     ch,
 				Client:   &client,
@@ -57,16 +71,44 @@ func HandleConn(conn net.Conn, cast broadcast.Broadcast) {
 			continue
 		}
 
-		switch {
-		case strings.Contains(msg, room.Help):
-			ch <- room.GetCommandsDescription(cast.Room[client.CurrRoom].Commands)
+		if isEntering {
+			_, ok := cast.Room[msg]
+			if msg == "" || !ok {
+				ch <- "Empty room name. Try again!"
+
+				isCreating = false
+
+				continue
+			}
+
+			cast.Entering <- broadcast.EnteringData{
+				Chan:     ch,
+				Client:   &client,
+				RoomName: msg,
+			}
+
+			isEntering = false
+
 			continue
-		case strings.Contains(msg, room.GetUsers):
-			ch <- room.GetUsersInRoom(cast.Room[client.CurrRoom])
-			continue
-		case strings.Contains(msg, room.CreateRoom):
-			ch <- "Enter room name:"
-			isCreating = true
+		}
+
+		if slices.Contains(cast.Room[client.CurrRoom].Commands, msg) {
+			switch {
+			case strings.Contains(msg, room.GetUsers):
+				ch <- room.GetUsersInRoom(cast.Room[client.CurrRoom])
+			case strings.Contains(msg, room.CreateRoom):
+				ch <- "Enter room name:"
+				isCreating = true
+			case strings.Contains(msg, room.EnterChat):
+				ch <- fmt.Sprintf("Choose room:\n%s", room.GetRoomsNames(cast.Room))
+				isEntering = true
+			case strings.Contains(msg, room.LeaveChat):
+				cast.Leaving <- broadcast.LeavingData{
+					Chan:   ch,
+					Client: &client,
+					IsExit: false,
+				}
+			}
 			continue
 		}
 
@@ -82,7 +124,12 @@ func HandleConn(conn net.Conn, cast broadcast.Broadcast) {
 		Client: &client,
 		IsExit: true,
 	}
-	// cast.Messages <- fmt.Sprintf("%s exit the chat!\n", name)
+
+	cast.Messages <- broadcast.Message{
+		Msg:      fmt.Sprintf("%s exit the chat!\n", name),
+		RoomName: client.CurrRoom,
+	}
+
 	conn.Close()
 }
 

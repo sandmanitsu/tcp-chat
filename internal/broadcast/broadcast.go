@@ -47,18 +47,18 @@ func NewBroadcast() Broadcast {
 		Leaving:  make(chan LeavingData),
 		Creating: make(chan CreatingData),
 		Room: map[string]room.Room{
-			room.MainRoomName: room.Room{
+			room.MainRoomName: {
 				Name:     room.MainRoomName,
 				Clients:  make(map[client.ClientConn]*client.Client),
 				Mu:       new(sync.RWMutex),
-				Commands: []string{room.GetUsers, room.CreateRoom},
+				Commands: []string{room.GetUsers, room.CreateRoom, room.EnterChat},
 			},
 		},
 		Mu: new(sync.Mutex),
 	}
 }
 
-func (b *Broadcast) Broadcast() {
+func (b Broadcast) Broadcast() {
 	for {
 		select {
 		case msg := <-b.Messages:
@@ -66,9 +66,8 @@ func (b *Broadcast) Broadcast() {
 			if !ok {
 				log.Printf("error send message: %s", msg.Msg)
 
-				continue // todo. Если не нашлось комната, отправить юзеру ошибку в чат
+				continue // todo. Если не нашлась комната, отправить юзеру ошибку в чат
 			}
-
 			for cliConn := range b.Room[msg.RoomName].Clients {
 				cliConn <- msg.Msg
 			}
@@ -86,45 +85,62 @@ func (b *Broadcast) Broadcast() {
 
 			e.Client.CurrRoom = e.RoomName
 
-			b.Messages <- Message{
-				Msg:      fmt.Sprintf("user %s enter to chat %s", e.Client.Name, e.RoomName),
-				RoomName: e.RoomName,
+			for cliConn := range b.Room[e.RoomName].Clients {
+				cliConn <- fmt.Sprintf("user %s enter to chat %s", e.Client.Name, e.RoomName)
 			}
 		case l := <-b.Leaving:
 			_, ok := b.Room[l.Client.CurrRoom]
 			if !ok {
-				l.Chan <- fmt.Sprintf("error leaving chan %s", l.Client.CurrRoom)
+				l.Chan <- fmt.Sprintf("error leaving chat %s", l.Client.CurrRoom)
 
 				continue
 			}
 
+			oldChat := l.Client.CurrRoom
+
 			b.Mu.Lock()
 			delete(b.Room[l.Client.CurrRoom].Clients, l.Chan)
-			b.Mu.Unlock()
-
-			b.Messages <- Message{
-				Msg:      fmt.Sprintf("user %s exit the chan %s", l.Client.Name, l.Client.CurrRoom),
-				RoomName: l.Client.CurrRoom,
-			}
 
 			if !l.IsExit {
 				b.Room[room.MainRoomName].Clients[l.Chan] = l.Client
+				l.Client.CurrRoom = room.MainRoomName
+
+				for cliConn := range b.Room[room.MainRoomName].Clients {
+					cliConn <- fmt.Sprintf("user %s enter to chat %s", l.Client.Name, room.MainRoomName)
+				}
+			}
+			b.Mu.Unlock()
+
+			for cliConn := range b.Room[oldChat].Clients {
+				cliConn <- fmt.Sprintf("user %s leave this chan", l.Client.Name)
 			}
 		case r := <-b.Creating:
 			b.Room[r.RoomName] = room.Room{
 				Name:     r.RoomName,
 				Clients:  make(map[client.ClientConn]*client.Client),
 				Mu:       new(sync.RWMutex),
-				Commands: []string{room.GetUsers},
+				Commands: []string{room.GetUsers, room.LeaveChat},
 			}
 
 			b.Mu.Lock()
 			delete(b.Room[r.Client.CurrRoom].Clients, r.Chan)
+			b.Mu.Unlock()
 
-			b.Entering <- EnteringData{
-				Chan:     r.Chan,
-				Client:   r.Client,
-				RoomName: r.RoomName,
+			_, ok := b.Room[r.RoomName]
+			if !ok {
+				r.Chan <- fmt.Sprintf("can't connect to room %s", r.RoomName)
+
+				continue
+			}
+
+			b.Mu.Lock()
+			b.Room[r.RoomName].Clients[r.Chan] = r.Client
+			b.Mu.Unlock()
+
+			r.Client.CurrRoom = r.RoomName
+
+			for cliConn := range b.Room[r.RoomName].Clients {
+				cliConn <- fmt.Sprintf("user %s enter to chat %s", r.Client.Name, r.RoomName)
 			}
 		}
 	}

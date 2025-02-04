@@ -20,9 +20,18 @@ type Room struct {
 
 func GetUsersInRoom(r Room) string {
 	text := strings.Builder{}
-	text.WriteString("\tusers:\n")
+	text.WriteString(fmt.Sprintf("\tusers in room %s:\n", r.Name))
 	for _, client := range r.Clients {
-		text.WriteString(fmt.Sprintf("\t %s\n", client.Name))
+		text.WriteString(fmt.Sprintf("\t-> %s\n", client.Name))
+	}
+
+	return text.String()
+}
+
+func GetRoomsNames(rooms map[string]Room) string {
+	text := strings.Builder{}
+	for _, room := range rooms {
+		text.WriteString(fmt.Sprintf("\t-> %s\n", room.Name))
 	}
 
 	return text.String()
